@@ -1,0 +1,17 @@
+﻿#Secrets et identifiants
+secrets/
+*.key
+*.pem
+.env
+.env.*
+id_ed25519*
+*.token
+
+#Sauvegardes
+backup/
+*.sql
+*.dump
+traces/
+
+#Fichiers generes
+node_modules/
