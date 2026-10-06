@@ -13,3 +13,133 @@
 # ===========================================================================
 
 services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: nebula
+      POSTGRES_USER: nebula
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets: [pg_password]
+    configs:
+      - source: init_sql
+        target: /docker-entrypoint-initdb.d/init.sql
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks: [nebula_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nebula -d nebula"]
+      interval: 5s
+      retries: 10
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.db == true"]
+      resources:
+        limits: { memory: 512M }
+
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks: [nebula_internal]
+    deploy:
+      replicas: 1
+      resources:
+        limits: { memory: 128M }
+
+  bus:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: nebula
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/bus_password
+    secrets: [bus_password]
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    networks: [nebula_internal]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.labels.bus == true"]
+      resources:
+        limits: { memory: 1G }
+
+    comptes:
+    image: ${REGISTRY}/nebula-comptes:${TAG}
+    environment:
+      PGHOST: db
+      POSTGRES_DB: nebula
+      POSTGRES_USER: nebula
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets: [pg_password]
+    networks: [edge_public, nebula_internal]
+    deploy:
+      replicas: 3
+      update_config: { order: start-first, failure_action: rollback, parallelism: 1, delay: 10s }
+      resources:
+        limits: { memory: 256M }
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.comptes.rule=PathPrefix(`/api/comptes`)"
+        - "traefik.http.routers.comptes.entrypoints=web"
+        - "traefik.http.routers.comptes.middlewares=strip-api"
+        - "traefik.http.services.comptes.loadbalancer.server.port=3000"
+        - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
+
+  publications:
+    image: ${REGISTRY}/nebula-publications:${TAG}
+    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
+    environment:
+      PGHOST: db
+      POSTGRES_DB: nebula
+      POSTGRES_USER: nebula
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      COMPTES_URL: http://comptes:3000
+      REDIS_URL: redis://cache:6379
+    secrets: [pg_password, bus_password]
+    networks: [edge_public, nebula_internal]
+    deploy:
+      replicas: 3
+      update_config: { order: start-first, failure_action: rollback, parallelism: 1, delay: 10s }
+      resources:
+        limits: { memory: 256M }
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.publications.rule=PathPrefix(`/api/publications`) || PathPrefix(`/api/fil`) || PathPrefix(`/api/health`)"
+        - "traefik.http.routers.publications.entrypoints=web"
+        - "traefik.http.routers.publications.middlewares=strip-api"
+        - "traefik.http.services.publications.loadbalancer.server.port=3000"
+
+  worker-medias:
+    image: ${REGISTRY}/nebula-worker-medias:${TAG}
+    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
+    environment:
+      SORTIE_DIR: /data
+    secrets: [bus_password]
+    volumes:
+      - traces:/data
+    networks: [nebula_internal]
+    deploy:
+      replicas: 3
+      update_config: { order: start-first, failure_action: rollback, parallelism: 1, delay: 10s }
+      resources:
+        limits: { memory: 256M }
+
+networks:
+  edge_public:
+    external: true
+  nebula_internal:
+    external: true
+
+secrets:
+  pg_password:
+    external: true
+  bus_password:
+    external: true
+
+configs:
+  init_sql:
+    external: true
+
+volumes:
+  db_data:
+  rabbit_data:
+  traces:
