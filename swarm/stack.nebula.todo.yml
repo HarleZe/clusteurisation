@@ -62,7 +62,7 @@ services:
       resources:
         limits: { memory: 1G }
 
-    comptes:
+  comptes:
     image: ${REGISTRY}/nebula-comptes:${TAG}
     environment:
       PGHOST: db
@@ -86,7 +86,7 @@ services:
 
   publications:
     image: ${REGISTRY}/nebula-publications:${TAG}
-    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
+    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
     environment:
       PGHOST: db
       POSTGRES_DB: nebula
@@ -110,7 +110,7 @@ services:
 
   worker-medias:
     image: ${REGISTRY}/nebula-worker-medias:${TAG}
-    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
+    command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
     environment:
       SORTIE_DIR: /data
     secrets: [bus_password]
