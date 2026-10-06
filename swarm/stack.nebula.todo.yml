@@ -50,7 +50,7 @@ services:
     image: rabbitmq:4-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: nebula
-      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/bus_password
+    command: ["sh", "-c", "export RABBITMQ_DEFAULT_PASS=$$(cat /run/secrets/bus_password) && exec rabbitmq-server"]
     secrets: [bus_password]
     volumes:
       - rabbit_data:/var/lib/rabbitmq
@@ -112,10 +112,8 @@ services:
     image: ${REGISTRY}/nebula-worker-medias:${TAG}
     command: ["sh", "-c", "export AMQP_URL=amqp://nebula:$$(cat /run/secrets/bus_password)@bus:5672 && exec node src/index.js"]
     environment:
-      SORTIE_DIR: /data
+      SORTIE_DIR: /home/node/traces
     secrets: [bus_password]
-    volumes:
-      - traces:/data
     networks: [nebula_internal]
     deploy:
       replicas: 3
